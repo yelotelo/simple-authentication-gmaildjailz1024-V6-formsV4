@@ -196,7 +196,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 return;
             }
 
-            await FetchAndDisplay("/applications", "https://graph.microsoft.com/v1.0/applications");
+            await FetchAndPopulateApplicationsAsync("https://graph.microsoft.com/v1.0/applications");
         }
 
         private async void BtnGroups_Click(object sender, EventArgs e)
@@ -300,13 +300,66 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             }
         }
 
-        // When a user is selected, fetch that user's detail
+        // NEW: fetch applications, populate the right-hand listbox
+        private async Task FetchAndPopulateApplicationsAsync(string url)
+        {
+            try
+            {
+                using (var http = new HttpClient())
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                    AppendHeader("/applications");
+                    var json = await GetGraphAsync(http, url);
+
+                    // Parse and populate list
+                    lstUsers.Items.Clear();
+
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        if (doc.RootElement.TryGetProperty("value", out var array) && array.ValueKind == JsonValueKind.Array)
+                        {
+                            var items = new List<ApplicationItem>();
+                            foreach (var el in array.EnumerateArray())
+                            {
+                                string id = el.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                                string display = el.TryGetProperty("displayName", out var pd) ? pd.GetString() : null;
+                                string appId = el.TryGetProperty("appId", out var pappId) ? pappId.GetString() : null;
+
+                                items.Add(new ApplicationItem { Id = id, Display = display, AppId = appId });
+                            }
+
+                            // Add to listbox
+                            foreach (var ai in items)
+                                lstUsers.Items.Add(ai);
+
+                            AppendLine($"Loaded {items.Count} applications. Select one on the right to fetch details.");
+                        }
+                        else
+                        {
+                            // fallback: show raw
+                            AppendLine(json);
+                        }
+                    }
+                }
+            }
+            catch (HttpRequestException hex)
+            {
+                AppendLine($"HTTP error: {hex.Message}");
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"Unexpected error: {ex.Message}");
+            }
+        }
+
+        // When a user or application is selected, fetch that item's detail
         private async void LstUsers_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (lstUsers.SelectedItem is UserItem item && !string.IsNullOrEmpty(item.Id))
+            if (lstUsers.SelectedItem is UserItem userItem && !string.IsNullOrEmpty(userItem.Id))
             {
-                string url = $"https://graph.microsoft.com/beta/users/{Uri.EscapeDataString(item.Id)}";
-                AppendHeader($"/users/{item.Id}");
+                string url = $"https://graph.microsoft.com/beta/users/{Uri.EscapeDataString(userItem.Id)}";
+                AppendHeader($"/users/{userItem.Id}");
+
                 try
                 {
                     using (var http = new HttpClient())
@@ -319,6 +372,25 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 catch (Exception ex)
                 {
                     AppendLine($"Failed to fetch user: {ex.Message}");
+                }
+            }
+            else if (lstUsers.SelectedItem is ApplicationItem appItem && !string.IsNullOrEmpty(appItem.Id))
+            {
+                string url = $"https://graph.microsoft.com/v1.0/applications/{Uri.EscapeDataString(appItem.Id)}";
+                AppendHeader($"/applications/{appItem.Id}");
+
+                try
+                {
+                    using (var http = new HttpClient())
+                    {
+                        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                        var json = await GetGraphAsync(http, url);
+                        AppendLine(json);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppendLine($"Failed to fetch application: {ex.Message}");
                 }
             }
         }
@@ -367,6 +439,20 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             {
                 if (!string.IsNullOrEmpty(Display)) return Display;
                 if (!string.IsNullOrEmpty(UserPrincipalName)) return UserPrincipalName;
+                return Id ?? "(unknown)";
+            }
+        }
+
+        // Helper class for applications
+        private class ApplicationItem
+        {
+            public string Id { get; set; }
+            public string Display { get; set; }
+            public string AppId { get; set; }
+            public override string ToString()
+            {
+                if (!string.IsNullOrEmpty(Display)) return Display;
+                if (!string.IsNullOrEmpty(AppId)) return AppId;
                 return Id ?? "(unknown)";
             }
         }
