@@ -208,7 +208,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 return;
             }
 
-            await FetchAndDisplay("/groups", "https://graph.microsoft.com/v1.0/groups");
+            await FetchAndPopulateGroupsAsync("https://graph.microsoft.com/v1.0/groups");
         }
 
         // Explicit Sign In button to acquire token without calling an endpoint
@@ -352,7 +352,58 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             }
         }
 
-        // When a user or application is selected, fetch that item's detail
+        // NEW: fetch groups, populate the right-hand listbox
+        private async Task FetchAndPopulateGroupsAsync(string url)
+        {
+            try
+            {
+                using (var http = new HttpClient())
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                    AppendHeader("/groups");
+                    var json = await GetGraphAsync(http, url);
+
+                    // Parse and populate list
+                    lstUsers.Items.Clear();
+
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        if (doc.RootElement.TryGetProperty("value", out var array) && array.ValueKind == JsonValueKind.Array)
+                        {
+                            var items = new List<GroupItem>();
+                            foreach (var el in array.EnumerateArray())
+                            {
+                                string id = el.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                                string display = el.TryGetProperty("displayName", out var pd) ? pd.GetString() : null;
+
+                                items.Add(new GroupItem { Id = id, Display = display });
+                            }
+
+                            // Add to listbox
+                            foreach (var gi in items)
+                                lstUsers.Items.Add(gi);
+
+                            AppendLine($"Loaded {items.Count} groups. Select one on the right to fetch details.");
+                        }
+                        else
+                        {
+                            // fallback: show raw
+                            AppendLine(json);
+                        }
+                    }
+                }
+            }
+            catch (HttpRequestException hex)
+            {
+                AppendLine($"HTTP error: {hex.Message}");
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"Unexpected error: {ex.Message}");
+            }
+        }
+
+        // When a user, application, or group is selected, fetch that item's detail
         private async void LstUsers_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (lstUsers.SelectedItem is UserItem userItem && !string.IsNullOrEmpty(userItem.Id))
@@ -391,6 +442,25 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 catch (Exception ex)
                 {
                     AppendLine($"Failed to fetch application: {ex.Message}");
+                }
+            }
+            else if (lstUsers.SelectedItem is GroupItem groupItem && !string.IsNullOrEmpty(groupItem.Id))
+            {
+                string url = $"https://graph.microsoft.com/v1.0/groups/{Uri.EscapeDataString(groupItem.Id)}";
+                AppendHeader($"/groups/{groupItem.Id}");
+
+                try
+                {
+                    using (var http = new HttpClient())
+                    {
+                        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                        var json = await GetGraphAsync(http, url);
+                        AppendLine(json);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppendLine($"Failed to fetch group: {ex.Message}");
                 }
             }
         }
@@ -453,6 +523,18 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             {
                 if (!string.IsNullOrEmpty(Display)) return Display;
                 if (!string.IsNullOrEmpty(AppId)) return AppId;
+                return Id ?? "(unknown)";
+            }
+        }
+
+        // Helper class for groups
+        private class GroupItem
+        {
+            public string Id { get; set; }
+            public string Display { get; set; }
+            public override string ToString()
+            {
+                if (!string.IsNullOrEmpty(Display)) return Display;
                 return Id ?? "(unknown)";
             }
         }
