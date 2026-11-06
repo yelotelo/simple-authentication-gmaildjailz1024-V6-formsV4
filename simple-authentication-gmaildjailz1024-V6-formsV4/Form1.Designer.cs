@@ -37,7 +37,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             // Form1
             this.AutoScaleDimensions = new SizeF(8F, 20F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.ClientSize = new Size(900, 800);
+            this.ClientSize = new Size(1400, 800);
             this.Controls.Add(this.label1);
 
 

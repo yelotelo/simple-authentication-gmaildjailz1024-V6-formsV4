@@ -21,7 +21,9 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
         private Button btnMe;
         private Button btnUsers;
         private Button btnApplications;
+        private Button btnServicePrincipals;
         private Button btnGroups;
+        private Button btnDirectoryRoles;
         private Button btnSignIn;
         private TextBox txtOutput;
         private ListBox lstUsers; // NEW: list of users
@@ -38,12 +40,16 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             btnMe = new Button { Text = "Me", Width = 120, Height = 34, Margin = new Padding(6) };
             btnUsers = new Button { Text = "Users", Width = 120, Height = 34, Margin = new Padding(6) };
             btnApplications = new Button { Text = "Applications", Width = 120, Height = 34, Margin = new Padding(6) };
+            btnServicePrincipals = new Button { Text = "Service Principals", Width = 140, Height = 34, Margin = new Padding(6) };
             btnGroups = new Button { Text = "Groups", Width = 120, Height = 34, Margin = new Padding(6) };
+            btnDirectoryRoles = new Button { Text = "DirectoryRoles", Width = 130, Height = 34, Margin = new Padding(6) };
 
             panel.Controls.Add(btnMe);
             panel.Controls.Add(btnUsers);
             panel.Controls.Add(btnApplications);
+            panel.Controls.Add(btnServicePrincipals);
             panel.Controls.Add(btnGroups);
+            panel.Controls.Add(btnDirectoryRoles);
             panel.Controls.Add(btnSignIn);
 
             // Create a split layout: left = output, right = users list
@@ -63,11 +69,13 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             btnMe.Click += BtnMe_Click;
             btnUsers.Click += BtnUsers_Click;
             btnApplications.Click += BtnApplications_Click;
+            btnServicePrincipals.Click += BtnServicePrincipals_Click;
             btnGroups.Click += BtnGroups_Click;
+            btnDirectoryRoles.Click += BtnDirectoryRoles_Click;
             btnSignIn.Click += BtnSignIn_Click;
 
             // Start with action buttons disabled until explicit sign-in
-            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnGroups.Enabled = false;
+            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = false;
 
             // If a token was persisted from a previous session, load it and enable actions
             LoadCachedTokenFromFile();
@@ -82,7 +90,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
         private async Task EnsureTokenAsync()
         {
             // disable action buttons while acquiring
-            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnGroups.Enabled = false;
+            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = false;
             txtOutput.Clear();
 
             try
@@ -133,7 +141,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             }
             finally
             {
-                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnGroups.Enabled = true;
+                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
             }
         }
 
@@ -150,7 +158,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                     if (!string.IsNullOrEmpty(token))
                     {
                         _cachedToken = token;
-                        btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnGroups.Enabled = true;
+                        btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
                         btnSignIn.Text = "Signed In";
                         
                         AppendLine("Loaded cached token from file.");
@@ -211,6 +219,30 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             await FetchAndPopulateGroupsAsync("https://graph.microsoft.com/v1.0/groups");
         }
 
+        private async void BtnServicePrincipals_Click(object sender, EventArgs e)
+        {
+            txtOutput.Clear();
+            if (string.IsNullOrEmpty(_cachedToken))
+            {
+                AppendLine("Please sign in first using the Sign In button.");
+                return;
+            }
+
+            await FetchAndPopulateServicePrincipalsAsync("https://graph.microsoft.com/v1.0/servicePrincipals");
+        }
+
+        private async void BtnDirectoryRoles_Click(object sender, EventArgs e)
+        {
+            txtOutput.Clear();
+            if (string.IsNullOrEmpty(_cachedToken))
+            {
+                AppendLine("Please sign in first using the Sign In button.");
+                return;
+            }
+
+            await FetchAndPopulateDirectoryRolesAsync("https://graph.microsoft.com/v1.0/directoryRoles");
+        }
+
         // Explicit Sign In button to acquire token without calling an endpoint
         private async void BtnSignIn_Click(object sender, EventArgs e)
         {
@@ -220,7 +252,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
 
             if (!string.IsNullOrEmpty(_cachedToken))
             {
-                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnGroups.Enabled = true;
+                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
                 btnSignIn.Text = "Signed In";
                
             }
@@ -403,7 +435,107 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             }
         }
 
-        // When a user, application, or group is selected, fetch that item's detail
+        // NEW: fetch service principals, populate the right-hand listbox
+        private async Task FetchAndPopulateServicePrincipalsAsync(string url)
+        {
+            try
+            {
+                using (var http = new HttpClient())
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                    AppendHeader("/servicePrincipals");
+                    var json = await GetGraphAsync(http, url);
+
+                    // Parse and populate list
+                    lstUsers.Items.Clear();
+
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        if (doc.RootElement.TryGetProperty("value", out var array) && array.ValueKind == JsonValueKind.Array)
+                        {
+                            var items = new List<ServicePrincipalItem>();
+                            foreach (var el in array.EnumerateArray())
+                            {
+                                string id = el.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                                string display = el.TryGetProperty("displayName", out var pd) ? pd.GetString() : null;
+                                string appId = el.TryGetProperty("appId", out var pappId) ? pappId.GetString() : null;
+
+                                items.Add(new ServicePrincipalItem { Id = id, Display = display, AppId = appId });
+                            }
+
+                            foreach (var si in items)
+                                lstUsers.Items.Add(si);
+
+                            AppendLine($"Loaded {items.Count} service principals. Select one on the right to fetch details.");
+                        }
+                        else
+                        {
+                            AppendLine(json);
+                        }
+                    }
+                }
+            }
+            catch (HttpRequestException hex)
+            {
+                AppendLine($"HTTP error: {hex.Message}");
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"Unexpected error: {ex.Message}");
+            }
+        }
+
+        // NEW: fetch directory roles, populate the right-hand listbox
+        private async Task FetchAndPopulateDirectoryRolesAsync(string url)
+        {
+            try
+            {
+                using (var http = new HttpClient())
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                    AppendHeader("/directoryRoles");
+                    var json = await GetGraphAsync(http, url);
+
+                    // Parse and populate list
+                    lstUsers.Items.Clear();
+
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        if (doc.RootElement.TryGetProperty("value", out var array) && array.ValueKind == JsonValueKind.Array)
+                        {
+                            var items = new List<DirectoryRoleItem>();
+                            foreach (var el in array.EnumerateArray())
+                            {
+                                string id = el.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                                string display = el.TryGetProperty("displayName", out var pd) ? pd.GetString() : null;
+                                string roleTemplateId = el.TryGetProperty("roleTemplateId", out var prt) ? prt.GetString() : null;
+
+                                items.Add(new DirectoryRoleItem { Id = id, Display = display, RoleTemplateId = roleTemplateId });
+                            }
+
+                            foreach (var dr in items)
+                                lstUsers.Items.Add(dr);
+
+                            AppendLine($"Loaded {items.Count} directory roles. Select one on the right to fetch details.");
+                        }
+                        else
+                        {
+                            AppendLine(json);
+                        }
+                    }
+                }
+            }
+            catch (HttpRequestException hex)
+            {
+                AppendLine($"HTTP error: {hex.Message}");
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"Unexpected error: {ex.Message}");
+            }
+        }
+
+        // When a user, application, group, service principal, or directory role is selected, fetch that item's detail
         private async void LstUsers_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (lstUsers.SelectedItem is UserItem userItem && !string.IsNullOrEmpty(userItem.Id))
@@ -461,6 +593,44 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 catch (Exception ex)
                 {
                     AppendLine($"Failed to fetch group: {ex.Message}");
+                }
+            }
+            else if (lstUsers.SelectedItem is ServicePrincipalItem servicePrincipalItem && !string.IsNullOrEmpty(servicePrincipalItem.Id))
+            {
+                string url = $"https://graph.microsoft.com/v1.0/servicePrincipals/{Uri.EscapeDataString(servicePrincipalItem.Id)}";
+                AppendHeader($"/servicePrincipals/{servicePrincipalItem.Id}");
+
+                try
+                {
+                    using (var http = new HttpClient())
+                    {
+                        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                        var json = await GetGraphAsync(http, url);
+                        AppendLine(json);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppendLine($"Failed to fetch service principal: {ex.Message}");
+                }
+            }
+            else if (lstUsers.SelectedItem is DirectoryRoleItem directoryRoleItem && !string.IsNullOrEmpty(directoryRoleItem.Id))
+            {
+                string url = $"https://graph.microsoft.com/v1.0/directoryRoles/{Uri.EscapeDataString(directoryRoleItem.Id)}";
+                AppendHeader($"/directoryRoles/{directoryRoleItem.Id}");
+
+                try
+                {
+                    using (var http = new HttpClient())
+                    {
+                        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _cachedToken);
+                        var json = await GetGraphAsync(http, url);
+                        AppendLine(json);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppendLine($"Failed to fetch directory role: {ex.Message}");
                 }
             }
         }
@@ -535,6 +705,34 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             public override string ToString()
             {
                 if (!string.IsNullOrEmpty(Display)) return Display;
+                return Id ?? "(unknown)";
+            }
+        }
+
+        // Helper class for service principals
+        private class ServicePrincipalItem
+        {
+            public string Id { get; set; }
+            public string Display { get; set; }
+            public string AppId { get; set; }
+            public override string ToString()
+            {
+                if (!string.IsNullOrEmpty(Display)) return Display;
+                if (!string.IsNullOrEmpty(AppId)) return AppId;
+                return Id ?? "(unknown)";
+            }
+        }
+
+        // Helper class for directory roles
+        private class DirectoryRoleItem
+        {
+            public string Id { get; set; }
+            public string Display { get; set; }
+            public string RoleTemplateId { get; set; }
+            public override string ToString()
+            {
+                if (!string.IsNullOrEmpty(Display)) return Display;
+                if (!string.IsNullOrEmpty(RoleTemplateId)) return RoleTemplateId;
                 return Id ?? "(unknown)";
             }
         }
