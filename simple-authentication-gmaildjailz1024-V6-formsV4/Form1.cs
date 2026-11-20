@@ -24,7 +24,9 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
         private Button btnServicePrincipals;
         private Button btnGroups;
         private Button btnDirectoryRoles;
+        private Button btnToken;
         private Button btnSignIn;
+        private ComboBox cmbClientIds;
         private TextBox txtOutput;
         private ListBox lstUsers; // NEW: list of users
 
@@ -43,6 +45,18 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             btnServicePrincipals = new Button { Text = "Service Principals", Width = 140, Height = 34, Margin = new Padding(6) };
             btnGroups = new Button { Text = "Groups", Width = 120, Height = 34, Margin = new Padding(6) };
             btnDirectoryRoles = new Button { Text = "DirectoryRoles", Width = 130, Height = 34, Margin = new Padding(6) };
+            btnToken = new Button { Text = "Token", Width = 120, Height = 34, Margin = new Padding(6) };
+            cmbClientIds = new ComboBox { Width = 280, Height = 34, Margin = new Padding(6), DropDownStyle = ComboBoxStyle.DropDownList };
+
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Graph Command Line Tools", ClientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Azure Active Directory PowerShell", ClientId = "1b730954-1685-4b74-9bfd-dac224a7b894" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Office", ClientId = "d3590ed6-52b3-4102-aeff-aad2292ab01c" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Azure CLI", ClientId = "04b07795-8ddb-461a-bbee-02f9e1bf7b46" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Teams", ClientId = "1fec8e78-bce4-4aaf-ab1b-5451cc387264" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Azure PowerShell", ClientId = "1950a258-227b-4e31-a9cf-717495945fc2" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Microsoft Edge", ClientId = "ecd6b820-32c2-49b6-98a6-444530e5a77a" });
+            cmbClientIds.Items.Add(new ClientIdOption { Name = "Visual Studio Code", ClientId = "aebc6443-996d-45c2-90f0-388ff96faa56" });
+            cmbClientIds.SelectedIndex = 0;
 
             panel.Controls.Add(btnMe);
             panel.Controls.Add(btnUsers);
@@ -50,6 +64,8 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             panel.Controls.Add(btnServicePrincipals);
             panel.Controls.Add(btnGroups);
             panel.Controls.Add(btnDirectoryRoles);
+            panel.Controls.Add(btnToken);
+            panel.Controls.Add(cmbClientIds);
             panel.Controls.Add(btnSignIn);
 
             // Create a split layout: left = output, right = users list
@@ -72,10 +88,11 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             btnServicePrincipals.Click += BtnServicePrincipals_Click;
             btnGroups.Click += BtnGroups_Click;
             btnDirectoryRoles.Click += BtnDirectoryRoles_Click;
+            btnToken.Click += BtnToken_Click;
             btnSignIn.Click += BtnSignIn_Click;
 
             // Start with action buttons disabled until explicit sign-in
-            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = false;
+            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = btnToken.Enabled = false;
 
             // If a token was persisted from a previous session, load it and enable actions
             LoadCachedTokenFromFile();
@@ -90,30 +107,46 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
         private async Task EnsureTokenAsync()
         {
             // disable action buttons while acquiring
-            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = false;
+            btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = btnToken.Enabled = false;
+            cmbClientIds.Enabled = false;
             txtOutput.Clear();
 
             try
             {
                 string tenant = "djailz1024gmail.onmicrosoft.com";
-                string clientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
+                var selectedClient = cmbClientIds.SelectedItem as ClientIdOption;
+                if (selectedClient == null)
+                {
+                    AppendLine("Please choose a client app before signing in.");
+                    return;
+                }
+                string clientId = selectedClient.ClientId;
 
                 string authority = $"https://login.microsoftonline.com/{tenant}";
 
                 string[] scopes = new[]
                 {
+                ""
+
+                };
+
+
+                /*
+                string[] scopes = new[]
+                {
                     "offline_access",
                     "group.read.all",
                     "openid",
-                    "user.read.all"
-                };
+                    "User.Read.All"
+                }; */
 
                 var app = PublicClientApplicationBuilder
                     .Create(clientId)
                     .WithAuthority(authority)
-                    .WithRedirectUri("http://localhost")
+                    .WithRedirectUri("https://login.microsoftonline.com/common/oauth2/nativeclient")
                     .Build();
 
+                AppendLine($"Using client: {selectedClient.Name} ({clientId})");
                 AppendLine("Acquiring token interactively...");
                 var result = await app.AcquireTokenInteractive(scopes).ExecuteAsync();
 
@@ -141,7 +174,8 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             }
             finally
             {
-                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
+                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = btnToken.Enabled = true;
+                cmbClientIds.Enabled = true;
             }
         }
 
@@ -158,7 +192,7 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                     if (!string.IsNullOrEmpty(token))
                     {
                         _cachedToken = token;
-                        btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
+                        btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = btnToken.Enabled = true;
                         btnSignIn.Text = "Signed In";
                         
                         AppendLine("Loaded cached token from file.");
@@ -243,6 +277,18 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
             await FetchAndPopulateDirectoryRolesAsync("https://graph.microsoft.com/v1.0/directoryRoles");
         }
 
+        private void BtnToken_Click(object sender, EventArgs e)
+        {
+            txtOutput.Clear();
+            if (string.IsNullOrEmpty(_cachedToken))
+            {
+                AppendLine("Please sign in first using the Sign In button.");
+                return;
+            }
+
+            DecodeAndDisplayToken(_cachedToken);
+        }
+
         // Explicit Sign In button to acquire token without calling an endpoint
         private async void BtnSignIn_Click(object sender, EventArgs e)
         {
@@ -252,10 +298,81 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
 
             if (!string.IsNullOrEmpty(_cachedToken))
             {
-                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = true;
+                btnMe.Enabled = btnUsers.Enabled = btnApplications.Enabled = btnServicePrincipals.Enabled = btnGroups.Enabled = btnDirectoryRoles.Enabled = btnToken.Enabled = true;
                 btnSignIn.Text = "Signed In";
                
             }
+        }
+
+        private void DecodeAndDisplayToken(string token)
+        {
+            try
+            {
+                var parts = token.Split('.');
+                if (parts.Length < 2)
+                {
+                    AppendLine("Invalid JWT format.");
+                    return;
+                }
+
+                var headerJson = DecodeBase64Url(parts[0]);
+                var payloadJson = DecodeBase64Url(parts[1]);
+
+                AppendHeader("Encrypted TOKEN");
+                AppendLine(token);
+
+                AppendHeader("TOKEN HEADER");
+                AppendLine(PrettyJson(headerJson));
+
+                AppendHeader("TOKEN PAYLOAD");
+                AppendLine(PrettyJson(payloadJson));
+
+                using (var doc = JsonDocument.Parse(payloadJson))
+                {
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("iat", out var iat) && iat.ValueKind == JsonValueKind.Number)
+                    {
+                        AppendLine($"iat: {UnixToUtc(iat.GetInt64()):u}");
+                    }
+                    if (root.TryGetProperty("nbf", out var nbf) && nbf.ValueKind == JsonValueKind.Number)
+                    {
+                        AppendLine($"nbf: {UnixToUtc(nbf.GetInt64()):u}");
+                    }
+                    if (root.TryGetProperty("exp", out var exp) && exp.ValueKind == JsonValueKind.Number)
+                    {
+                        AppendLine($"exp: {UnixToUtc(exp.GetInt64()):u}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"Failed to decode token: {ex.Message}");
+            }
+        }
+
+        private string DecodeBase64Url(string input)
+        {
+            var s = input.Replace('-', '+').Replace('_', '/');
+            switch (s.Length % 4)
+            {
+                case 2: s += "=="; break;
+                case 3: s += "="; break;
+            }
+            var bytes = Convert.FromBase64String(s);
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        private string PrettyJson(string json)
+        {
+            using (var doc = JsonDocument.Parse(json))
+            {
+                return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+            }
+        }
+
+        private DateTime UnixToUtc(long seconds)
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
         }
 
         private async Task FetchAndDisplay(string header, string url)
@@ -734,6 +851,16 @@ namespace simple_authentication_gmaildjailz1024_V6_formsV4
                 if (!string.IsNullOrEmpty(Display)) return Display;
                 if (!string.IsNullOrEmpty(RoleTemplateId)) return RoleTemplateId;
                 return Id ?? "(unknown)";
+            }
+        }
+
+        private class ClientIdOption
+        {
+            public string Name { get; set; }
+            public string ClientId { get; set; }
+            public override string ToString()
+            {
+                return $"{Name} ({ClientId})";
             }
         }
     }
